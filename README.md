@@ -1,52 +1,65 @@
-# bug Project
+# Bean Validation bug in Quarkus 3.0.0.Alpha2 but not in 3.0.0.Alpha1
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+There is a strange behaviour in Quarkus 3.0.0.Alpha2 when using Bean Validation `ValidatorFactory` and injecting `Validator` in the same test, which succeeds using 3.0.0.Alpha1. 
 
-If you want to learn more about Quarkus, please visit its website: https://quarkus.io/ .
+I have a CD object with some constraints:
 
-## Running the application in dev mode
+```java
+import jakarta.validation.constraints.*;
 
-You can run your application in dev mode that enables live coding using:
-```shell script
-./mvnw compile quarkus:dev
+public class CD {
+
+  @NotNull @Size(min = 4, max = 50)
+  public String title;
+  @NotNull @Positive
+  public Float price;
+  @Max(value = 5)
+  public Integer numberOfCDs;
 ```
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at http://localhost:8080/q/dev/.
+And I have two tests that succeed if run separately, but fail if run together.
+The first test builds a `ValidatorFactory` to validate the CD object (and closes the factory at the end of the test).
+And the second test injects a `Validator` to validate the CD object.
+When run together, the second test fails (`assertEquals(1, violations.size());` fails).
 
-## Packaging and running the application
+If both tests use the injected `validator` it succeeds.
+If both tests use the `ValidatorFactory` it fails.
 
-The application can be packaged using:
-```shell script
-./mvnw package
+And no matter which combination of tests you use, the tests always succeed with `3.0.0.Alpha1`.
+
+```java
+@QuarkusTest
+public class CDTest {
+
+  @Inject
+  Validator validator;
+
+  @Test
+  void shouldRaiseNoConstraintViolationWithDefault() {
+    ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
+    Validator validator = factory.getValidator();
+
+    CD cd = new CD().title("Kind of Blue").price(12.5f);
+
+    Set<ConstraintViolation<CD>> violations = validator.validate(cd);
+    assertEquals(0, violations.size());
+
+    factory.close();
+  }
+
+  @Test
+  void shouldRaiseConstraintViolationValidatingNumberOfCDsProperty() {
+
+    CD cd = new CD().numberOfCDs(7);
+
+    Set<ConstraintViolation<CD>> violations = validator.validateProperty(cd, "numberOfCDs");
+
+    assertEquals(1, violations.size());
+    ConstraintViolation<CD> violation = violations.iterator().next();
+
+    assertEquals("must be less than or equal to 5", violation.getMessage());
+    assertEquals(7, violation.getInvalidValue());
+    assertEquals("{jakarta.validation.constraints.Max.message}", violation.getMessageTemplate());
+  }
+}
 ```
-It produces the `quarkus-run.jar` file in the `target/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `target/quarkus-app/lib/` directory.
-
-The application is now runnable using `java -jar target/quarkus-app/quarkus-run.jar`.
-
-If you want to build an _über-jar_, execute the following command:
-```shell script
-./mvnw package -Dquarkus.package.type=uber-jar
-```
-
-The application, packaged as an _über-jar_, is now runnable using `java -jar target/*-runner.jar`.
-
-## Creating a native executable
-
-You can create a native executable using: 
-```shell script
-./mvnw package -Pnative
-```
-
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using: 
-```shell script
-./mvnw package -Pnative -Dquarkus.native.container-build=true
-```
-
-You can then execute your native executable with: `./target/bug-1.0.0-SNAPSHOT-runner`
-
-If you want to learn more about building native executables, please consult https://quarkus.io/guides/maven-tooling.
-
-## Related Guides
-
-- Hibernate Validator ([guide](https://quarkus.io/guides/validation)): Validate object properties (field, getter) and method parameters for your beans (REST, CDI, JPA)

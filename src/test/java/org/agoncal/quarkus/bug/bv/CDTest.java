@@ -25,8 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @QuarkusTest
 public class CDTest {
 
-  @Inject
-  Validator validator;
+//  @Inject
+//  Validator validator;
 
   @Test
   void shouldRaiseNoConstraintViolationWithDefault() {
@@ -42,8 +42,10 @@ public class CDTest {
   }
 
   @Test
-    //@Ignore("Make sure your local is EN, if not use the following JVM parameters : -Duser.language=en -Duser.country=EN")
   void shouldRaiseConstraintViolationValidatingNumberOfCDsProperty() {
+
+    ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
+    Validator validator = factory.getValidator();
 
     CD cd = new CD().numberOfCDs(7);
 
@@ -55,5 +57,7 @@ public class CDTest {
     assertEquals("must be less than or equal to 5", violation.getMessage());
     assertEquals(7, violation.getInvalidValue());
     assertEquals("{jakarta.validation.constraints.Max.message}", violation.getMessageTemplate());
+
+    factory.close();
   }
 }
